@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# CLI for briar-headless -  https://code.briarproject.org/
+# TODO: add support for blogs
+# TODO: fix revoke bug
+
+declare JAR="$HOME/.briar/server.jar"
+declare TOKEN="$HOME/.briar/auth_token"
+declare API="http://127.0.0.1:7000/v1"
+declare WS="ws://127.0.0.1:7000/v1/ws"
+declare CONTACTS="contacts"
+declare LINK="${CONTACTS}/add/link"
+declare PENDING="${CONTACTS}/add/pending"
+declare MESSAGES="messages"
+declare AUTH="Authorization: Bearer $(cat < $TOKEN)"
+
+get() { curl -sH "$AUTH" $API/$1/$2; }
+post() { curl -sX POST --data "{$1}" -H "$AUTH" $API/$2/$3; }
+delete() { curl -sX DELETE -H "$AUTH" $API/$1/$2; }
+revoke() { curl -sX DELETE --data "{$1}" -H "$AUTH" $API/$2; }
+error() { echo -e "${RED}error:${RESET} $1">&2; exit $2; }
+warn() { echo -e "${YELLOW}warning:${RESET} $1"; }
+info() { echo -e "${BLUE}$1:${RESET} $2"; }
+input() { echo -ne "${BLUE}$1:${RESET} "; }
+
+source colors 2>/dev/null || warn "missing optional \"colors\" dependency"
+command -v jq >/dev/null || error "missing \"jq\" dependency" 1
+command -v wscat >/dev/null || error "missing \"wscat\" dependency" 1
+
+[[ ! -n $(timeout 3 curl -s "$API") ]] && error "server seems down" 1
+[[ ! -f $JAR ]] && error "no such file" 2
+[[ ! -f $TOKEN ]] && error "no such file" 2
+[[ $# == 0 ]] && error "no argument provided" 1
+[[ $# > 1 ]] && error "too many arguments" 1
+
+for arg in "$@"
+do
+case $arg in
+	-h|--help)
+	echo -e "${BLUE}usage:${RESET} 
+	${0##*/} {-h --help}          print usage
+	${0##*/} {-c --contacts}      get contacts
+	${0##*/} {-l --link}          get link 
+	${0##*/} {-p --pending}       get pending requests
+	${0##*/} {-a --add}           add new contact
+	${0##*/} {-r --revoke}        revoke contact request
+	${0##*/} {-d --delete}        delete contact
+	${0##*/} {-m --messages}      get messages
+	${0##*/} {-s --send}          send messages
+	${0##*/} {-w --websocket}     connect to websocket"
+	break;;
+	-c|--contacts)
+	get $CONTACTS | jq
+	break;;
+	-l|--link)
+	get $LINK | jq
+	break;;
+	-p|--pending)
+	get $PENDING | jq
+	break;;
+	-a|--add)
+	input "alias" && read ALIAS && [[ -z $ALIAS ]] && error "alias can't be empty" 1
+	input "link" && read URL && [[ -z $URL ]] && error "link can't be empty" 1
+	[[ "Invalid Link" == $(post '"link":"'"$URL"'","alias":"'"${ALIAS}"'"' $PENDING) ]] \
+	&& error "invalid link" 1 || info "status" "request sent"
+	revoke;;	
+	-r|--revoke)
+	input "contact id" && read ID && [[ -z $ID ]] && error "id can't be empty" 1
+	[[ "Not found" == $(revoke '"pendingContactId":"'"$ID"'"' $PENDING) ]] \
+	&& error "invalid id" 1 || info "status" "request revoked"
+	break;;
+	-d|--delete)
+	input "id" && read ID && [[ -z $ID ]] && error "id can't be empty" 1
+	[[ "Not found" == $(delete $CONTACTS $ID) ]] \
+	&& error "invalid id" 1 || info "status" "contact removed"
+	break;;
+	-m|--messages)
+	input "id" && read ID && [[ -z $ID ]] && error "id can't be empty" 1
+	get $MESSAGES $ID | jq '.[] | .text'
+	break;;
+	-s|--send)
+	input "id" && read ID && [[ -z $ID ]] && error "id can't be empty" 1
+	input "message" && read TEXT && [[ -z $TEXT ]] && error "message can't be empty" 1
+	[[ "Not found" == $(post '"text":"'"$TEXT"'"' $MESSAGES $ID) ]] \
+	&& error "invalid id" 1 || info "status" "message sent"
+	break;;
+	-w|--websocket)
+	info "wscat" "send the token to activate the websocket"
+	wscat -c $WS
+	break;;
+	*)
+	error "invalid argument" 3
+	;;esac done
+
+exit 0
