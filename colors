@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+GREEN=\\e[32m
+BLUE=\\e[34m
+RED=\\e[91m
+BLACK=\\e[30m
+YELLOW=\\e[33m
+RESET=\\e[0m
+green=\\e[32m
+blue=\\e[34m
+red=\\e[91m
+black=\\e[30m
+yellow=\\e[33m
+reset=\\e[0m
+
