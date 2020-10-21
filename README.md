@@ -6,5 +6,5 @@ briar -h
 ```
 ## Dependencies
 ```
-yay -S jq wscat
-```
+yay -S briar-headless-git jq wscat
+``` 
